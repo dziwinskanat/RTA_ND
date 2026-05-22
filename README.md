@@ -1,1 +1,1 @@
-# RTA_ND
+# Analiza danych w czasie rzeczywistym
