@@ -11,12 +11,39 @@ services:
       KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092'
       KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
-      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
       KAFKA_PROCESS_ROLES: 'broker,controller'
       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
     volumes:
       - kafka_data:/var/lib/kafka/data
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: >
+      "
+      echo 'Waiting for Kafka to be ready...'
+      cub kafka-ready -b kafka:29092 1 30 &&
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 --topic wikipedia-raw &&
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 --topic predictions-stream &&
+      echo 'Topics created successfully.'
+      "
+
+  producer:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: wikipedia-producer
+    restart: on-failure
+    environment:
+      KAFKA_SERVER: "kafka:29092"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
 
   kafdrop:
     image: obsidiandynamics/kafdrop:4.0.1

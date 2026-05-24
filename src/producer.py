@@ -1,10 +1,11 @@
 import json
+import os
 import sys
 import time
 import requests
 from kafka import KafkaProducer
 
-KAFKA_SERVER = 'localhost:9092'
+KAFKA_SERVER = os.environ.get('KAFKA_SERVER', 'localhost:9092')
 WIKIPEDIA_STREAM_URL = 'https://stream.wikimedia.org/v2/stream/recentchange'
 
 print("INFO: Initializing Kafka Producer...")
@@ -31,25 +32,9 @@ try:
                     try:
                         change_data = json.loads(line.decode('utf-8')[6:])
                         
-                        if change_data.get('server_name') in ['pl.wikipedia.org', 'en.wikipedia.org']:
-                            
-                            filtered_data = {
-                                "id": change_data.get("id"),
-                                "title": change_data.get("title"),
-                                "user": change_data.get("user"),
-                                "bot": change_data.get("bot", False),
-                                "timestamp": change_data.get("timestamp")
-                            }
-                            
-                            producer.send('wikipedia-raw', value=filtered_data)
-                            
-                            prediction_data = {
-                                "id": filtered_data["id"],
-                                "is_bot": filtered_data["bot"]
-                            }
-                            producer.send('predictions-stream', value=prediction_data)
-                            
-                            print(f"SENT: {filtered_data['title']} | Bot: {filtered_data['bot']}")
+                        if change_data.get('server_name') in ['en.wikipedia.org']:                             
+                            producer.send('wikipedia-raw', value=change_data)
+                            print(f"SENT: {change_data['title']} | Bot: {change_data['bot']}")
                     
                     except Exception: 
                         continue
