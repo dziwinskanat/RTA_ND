@@ -50,7 +50,7 @@ consumer = KafkaConsumer(
     auto_offset_reset="earliest",
     group_id=None,
     value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-    consumer_timeout_ms=30_000,
+    consumer_timeout_ms=-1,
 )
  
 buffer, total, batch_idx, t0 = [], 0, 0, time.time()

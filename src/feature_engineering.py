@@ -4,6 +4,8 @@ import pandas as pd
 from hashlib import md5
 
 
+ALL_CHANGE_TYPES = ["edit", "new", "log", "categorize"]
+
 NAMESPACE_MAP = {
     0: "article", 1: "talk", 2: "user", 3: "user_talk",
     4: "wikipedia", 5: "wikipedia_talk", 6: "file", 7: "file_talk",
@@ -43,6 +45,7 @@ class WikipediaFeatureEngineer:
         result = pd.concat([
             self._parse_numeric_fields(df),
             self._compute_edit_features(df),
+            self._encode_type(df),
             self._encode_namespace(df),
             self._hash_text_fields(df),
         ], axis=1)
@@ -85,7 +88,21 @@ class WikipediaFeatureEngineer:
         r["comment_length"] = comment.str.len()
         r["has_comment"] = (comment.str.strip() != "").astype(int)
         r["title_has_number"] = title.str.contains(r"\d", regex=True).astype(int)
+        if "timestamp" in df.columns:
+            ts = pd.to_numeric(df["timestamp"], errors="coerce").fillna(0).astype(int)
+            r["hour_of_day"] = (ts % 86400) // 3600
+        else:
+            r["hour_of_day"] = 0
         return r
+
+    @staticmethod
+    def _encode_type(df: pd.DataFrame) -> pd.DataFrame:
+        result = pd.DataFrame(0, index=df.index, columns=[f"type_{t}" for t in ALL_CHANGE_TYPES])
+        if "type" not in df.columns:
+            return result
+        for t in ALL_CHANGE_TYPES:
+            result[f"type_{t}"] = (df["type"] == t).astype(int)
+        return result
 
     @staticmethod
     def _encode_namespace(df: pd.DataFrame) -> pd.DataFrame:
