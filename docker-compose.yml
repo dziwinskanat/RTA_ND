@@ -63,7 +63,23 @@ services:
       #   condition: service_started
       kafka-init:
         condition: service_completed_successfully
-
+  live-consumer:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: live-scoring-consumer
+    restart: on-failure
+    command: python -u live_scoring_consumer.py
+    environment:
+      KAFKA_SERVER: "kafka:29092"
+      INPUT_TOPIC: "wikipedia-raw"
+      OUTPUT_TOPIC: "predictions-stream"
+      MODEL_PATH: "/models/xgb_bot_detector.json"
+    volumes:
+      - ./models:/models
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
   kafdrop:
     image: obsidiandynamics/kafdrop:4.0.1
     container_name: kafdrop-ui
