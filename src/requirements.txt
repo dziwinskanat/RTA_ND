@@ -2,3 +2,6 @@ kafka-python
 requests
 sseclient-py
 pandas
+numpy
+xgboost
+scikit-learn
