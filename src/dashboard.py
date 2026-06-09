@@ -5,12 +5,12 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, TopicPartition
 
 
 KAFKA_SERVER = os.environ.get("KAFKA_SERVER", "localhost:9092")
 PREDICTIONS_TOPIC = os.environ.get("PREDICTIONS_TOPIC", "predictions-stream")
-CONSUMER_GROUP_ID = os.environ.get("CONSUMER_GROUP_ID", "streamlit-dashboard")
+CONSUMER_GROUP_ID = os.environ.get("CONSUMER_GROUP_ID", "streamlit-dashboard-v3")
 
 
 st.set_page_config(
@@ -44,17 +44,43 @@ def parse_bool(value):
 @st.cache_resource
 def get_consumer():
     """
-    KafkaConsumer jest cache'owany, żeby Streamlit nie tworzył nowego połączenia
-    przy każdym odświeżeniu strony.
+    Tworzy KafkaConsumer dla dashboardu.
+
+    Używamy ręcznego przypisania partycji zamiast consumer group,
+    żeby uniknąć problemów z zapamiętanymi offsetami podczas testów lokalnych.
     """
-    return KafkaConsumer(
-        PREDICTIONS_TOPIC,
+    consumer = KafkaConsumer(
         bootstrap_servers=[KAFKA_SERVER],
-        auto_offset_reset="latest",
-        group_id=CONSUMER_GROUP_ID,
         enable_auto_commit=False,
         value_deserializer=lambda message: json.loads(message.decode("utf-8")),
     )
+
+    partitions = None
+
+    for _ in range(10):
+        partitions = consumer.partitions_for_topic(PREDICTIONS_TOPIC)
+        if partitions:
+            break
+        time.sleep(1)
+
+    if not partitions:
+        raise RuntimeError(
+            f"Nie znaleziono partycji dla topica {PREDICTIONS_TOPIC}. "
+            "Sprawdź, czy topic istnieje i Kafka działa."
+        )
+
+    topic_partitions = [
+        TopicPartition(PREDICTIONS_TOPIC, partition)
+        for partition in partitions
+    ]
+
+    consumer.assign(topic_partitions)
+
+    # Na potrzeby testów i prezentacji czytamy od początku topica,
+    # żeby dashboard od razu miał dane po uruchomieniu.
+    consumer.seek_to_beginning(*topic_partitions)
+
+    return consumer
 
 
 def read_new_messages(consumer, max_records=500, timeout_ms=1000):
@@ -77,8 +103,6 @@ def read_new_messages(consumer, max_records=500, timeout_ms=1000):
                 record["_kafka_partition"] = message.partition
                 records.append(record)
 
-    if records:
-        consumer.commit()
 
     return records
 
@@ -170,7 +194,7 @@ auto_refresh = st.sidebar.checkbox(
 # -----------------------
 
 if "events" not in st.session_state:
-    st.session_state.events = []
+    st.session_state["events"] = []
 
 
 # -----------------------
@@ -189,15 +213,15 @@ try:
     new_events = read_new_messages(consumer)
 
     if new_events:
-        st.session_state.events.extend(new_events)
-        st.session_state.events = st.session_state.events[-max_stored_events:]
+        st.session_state["events"].extend(new_events)
+        st.session_state["events"] = st.session_state["events"][-max_stored_events:]
 
 except Exception as error:
     st.error(f"Błąd połączenia z Kafką: {error}")
     st.stop()
 
 
-df = prepare_dataframe(st.session_state.events)
+df = prepare_dataframe(st.session_state["events"])
 
 if df.empty:
     st.info(
@@ -341,7 +365,7 @@ st.dataframe(
 # -----------------------
 
 with st.expander("Podgląd surowych danych"):
-    st.json(st.session_state.events[-5:])
+    st.json(st.session_state["events"][-5:])
 
 
 # -----------------------
