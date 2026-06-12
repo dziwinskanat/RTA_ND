@@ -80,6 +80,22 @@ services:
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+  dashboard:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: streamlit-dashboard
+    restart: on-failure
+    command: streamlit run dashboard.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "8501:8501"
+    environment:
+      KAFKA_SERVER: "kafka:29092"
+      PREDICTIONS_TOPIC: "predictions-stream"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
   kafdrop:
     image: obsidiandynamics/kafdrop:4.0.1
     container_name: kafdrop-ui
